@@ -1,7 +1,7 @@
 export async function requireToken(
   c: any,
-  next: () => Promise<Response>
-): Promise<Response> {
+  next: () => Promise<void>
+): Promise<Response | undefined> {
   const auth = c.req.header("Authorization");
   // En Pages Functions el token vive en bindings (c.env); en vitest, en process.env.
   const expected: string | undefined = c?.env?.CRM_TOKEN ?? process.env.CRM_TOKEN;
@@ -11,5 +11,5 @@ export async function requireToken(
       headers: { "content-type": "application/json" },
     });
   }
-  return next();
+  await next();
 }

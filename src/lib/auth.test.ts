@@ -6,17 +6,21 @@ const makeCtx = (header: string | undefined) =>
 
 describe("requireToken", () => {
   it("rechaza sin header", async () => {
-    const res = await requireToken(makeCtx(undefined), async () => new Response("no"));
-    expect(res.status).toBe(401);
+    const res = await requireToken(makeCtx(undefined), async () => {});
+    expect(res?.status).toBe(401);
   });
 
   it("rechaza token incorrecto", async () => {
-    const res = await requireToken(makeCtx("Bearer mal"), async () => new Response("no"));
-    expect(res.status).toBe(401);
+    const res = await requireToken(makeCtx("Bearer mal"), async () => {});
+    expect(res?.status).toBe(401);
   });
 
-  it("deja pasar el token correcto", async () => {
-    const res = await requireToken(makeCtx("Bearer secreto123"), async () => new Response("ok"));
-    expect(await res.text()).toBe("ok");
+  it("deja pasar el token correcto (ejecuta next)", async () => {
+    let pasado = false;
+    const res = await requireToken(makeCtx("Bearer secreto123"), async () => {
+      pasado = true;
+    });
+    expect(pasado).toBe(true);
+    expect(res).toBeUndefined();
   });
 });
