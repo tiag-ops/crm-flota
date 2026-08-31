@@ -1,0 +1,38 @@
+[
+  {
+    "slug": "sueldoneto",
+    "nombre": "SueldoNeto.ar",
+    "url": "https://sueldoneto.com.ar",
+    "repo": "tiag-ops/suelloneto-ar",
+    "pages_project": "suelloneto-ar",
+    "estado": "live",
+    "notas": "Gate tanda 2 ~29/9: >=60/100 indexadas en GSC"
+  },
+  {
+    "slug": "reditos",
+    "nombre": "Redito.ar",
+    "url": "https://reditos.com.ar",
+    "repo": "tiag-ops/reditos-ar",
+    "pages_project": "reditos-ar",
+    "estado": "live",
+    "notas": "Falta Email Routing + Search Console"
+  },
+  {
+    "slug": "maternidad",
+    "nombre": "Maternidad.ar",
+    "url": "",
+    "repo": "tiag-ops/maternidad-ar",
+    "pages_project": "maternidad-ar",
+    "estado": "pre-launch",
+    "notas": "Solo en maternidad-ar.pages.dev; dominio propio pendiente"
+  },
+  {
+    "slug": "crm",
+    "nombre": "CRM Flota (este panel)",
+    "url": "https://crm.pages.dev",
+    "repo": "tiag-ops/crm",
+    "pages_project": "crm",
+    "estado": "live",
+    "notas": "Panel interno; se auto-chequea en el pulse (dogfood)"
+  }
+]
