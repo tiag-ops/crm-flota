@@ -1,0 +1,8 @@
+name = "crm"
+compatibility_date = "2026-08-01"
+pages_build_output_dir = "out"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "crm-db"
+database_id = "0e3293ea-fd94-47af-86b0-eb2ff77c69c4"
