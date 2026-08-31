@@ -29,9 +29,9 @@
   {
     "slug": "crm",
     "nombre": "CRM Flota (este panel)",
-    "url": "https://crm.pages.dev",
-    "repo": "tiag-ops/crm",
-    "pages_project": "crm",
+    "url": "https://crm-flota.pages.dev",
+    "repo": "tiag-ops/crm-flota",
+    "pages_project": "crm-flota",
     "estado": "live",
     "notas": "Panel interno; se auto-chequea en el pulse (dogfood)"
   }
