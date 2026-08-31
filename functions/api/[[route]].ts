@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { requireToken } from "../../src/lib/auth";
-import { checkInput } from "../../src/lib/validate";
+import { checkInput, seoInput } from "../../src/lib/validate";
 
 const DAY = 86400000;
 
@@ -78,6 +78,18 @@ export const onRequest = async (context: any): Promise<Response> => {
     const failMap = Object.fromEntries(checksRows.map((r) => [r.dia, r.fail]));
     const depMap = Object.fromEntries(deployRows.map((r) => [r.dia, r.n]));
 
+    const seoRows = (
+      await db
+        .prepare(
+          `SELECT slug, SUM(clicks) AS clicks, SUM(impressions) AS impressions,
+                  ROUND(AVG(position), 1) AS pos
+           FROM seo_daily
+           WHERE clicks IS NOT NULL AND dia >= date('now', '-27 days')
+           GROUP BY slug`
+        )
+        .all()
+    ).results as any[];
+
     return Response.json({
       sites: sites.results,
       checks: checks.results,
@@ -91,6 +103,9 @@ export const onRequest = async (context: any): Promise<Response> => {
         deploys: days.map((d) => depMap[d] ?? 0),
       },
       uptime_7d: Object.fromEntries(uptimeRows.map((r) => [r.slug, r.pct])),
+      seo28: Object.fromEntries(
+        seoRows.map((r) => [r.slug, { clicks: r.clicks, impressions: r.impressions, pos: r.pos }])
+      ),
     });
   });
 
@@ -120,6 +135,33 @@ export const onRequest = async (context: any): Promise<Response> => {
     await db
       .prepare("INSERT INTO tareas (slug, titulo) VALUES (?, ?)")
       .bind(body.slug ?? null, body.titulo)
+      .run();
+    return Response.json({ ok: true }, { status: 201 });
+  });
+
+  app.post("/api/seo", requireToken, async (c: any) => {
+    const input = seoInput(await c.req.json());
+    await db
+      .prepare(
+        `INSERT INTO seo_daily (slug, dia, clicks, impressions, position, robots_ok, sitemap_ok, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+         ON CONFLICT(slug, dia) DO UPDATE SET
+           clicks = COALESCE(excluded.clicks, clicks),
+           impressions = COALESCE(excluded.impressions, impressions),
+           position = COALESCE(excluded.position, position),
+           robots_ok = COALESCE(excluded.robots_ok, robots_ok),
+           sitemap_ok = COALESCE(excluded.sitemap_ok, sitemap_ok),
+           updated_at = datetime('now')`
+      )
+      .bind(
+        input.slug,
+        input.dia,
+        input.clicks,
+        input.impressions,
+        input.position,
+        input.robots_ok,
+        input.sitemap_ok
+      )
       .run();
     return Response.json({ ok: true }, { status: 201 });
   });
