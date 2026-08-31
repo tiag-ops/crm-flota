@@ -2,6 +2,8 @@ import { Hono } from "hono";
 import { requireToken } from "../../src/lib/auth";
 import { checkInput } from "../../src/lib/validate";
 
+const DAY = 86400000;
+
 export const onRequest = async (context: any): Promise<Response> => {
   const app = new Hono();
   const db = context.env.DB;
@@ -23,6 +25,9 @@ export const onRequest = async (context: any): Promise<Response> => {
     const tareas = await db
       .prepare("SELECT * FROM tareas WHERE hecha = 0 ORDER BY creada")
       .all();
+    const hechas = await db
+      .prepare("SELECT * FROM tareas WHERE hecha = 1 ORDER BY id DESC LIMIT 20")
+      .all();
     const deployments = await db
       .prepare(
         `SELECT d.* FROM deployments d
@@ -30,11 +35,62 @@ export const onRequest = async (context: any): Promise<Response> => {
          ON d.slug = m.slug AND d.ts = m.maxts`
       )
       .all();
+
+    // Series 14 días (UTC, igual que date() en SQLite)
+    const checksRows = (
+      await db
+        .prepare(
+          `SELECT date(ts) AS dia,
+             SUM(CASE WHEN ok = 1 THEN 1 ELSE 0 END) AS ok,
+             SUM(CASE WHEN ok = 0 THEN 1 ELSE 0 END) AS fail
+           FROM checks
+           WHERE ts >= datetime('now', '-13 days')
+           GROUP BY dia`
+        )
+        .all()
+    ).results as any[];
+    const deployRows = (
+      await db
+        .prepare(
+          `SELECT date(ts) AS dia, COUNT(*) AS n
+           FROM deployments
+           WHERE ts >= datetime('now', '-13 days')
+           GROUP BY dia`
+        )
+        .all()
+    ).results as any[];
+    const uptimeRows = (
+      await db
+        .prepare(
+          `SELECT slug, ROUND(100.0 * SUM(ok) / COUNT(*), 1) AS pct
+           FROM checks
+           WHERE ts >= datetime('now', '-7 days')
+           GROUP BY slug`
+        )
+        .all()
+    ).results as any[];
+
+    const days: string[] = [];
+    for (let i = 13; i >= 0; i--) {
+      days.push(new Date(Date.now() - i * DAY).toISOString().slice(0, 10));
+    }
+    const okMap = Object.fromEntries(checksRows.map((r) => [r.dia, r.ok]));
+    const failMap = Object.fromEntries(checksRows.map((r) => [r.dia, r.fail]));
+    const depMap = Object.fromEntries(deployRows.map((r) => [r.dia, r.n]));
+
     return Response.json({
       sites: sites.results,
       checks: checks.results,
       tareas: tareas.results,
+      hechas: hechas.results,
       deployments: deployments.results,
+      series: {
+        days,
+        ok: days.map((d) => okMap[d] ?? 0),
+        fail: days.map((d) => failMap[d] ?? 0),
+        deploys: days.map((d) => depMap[d] ?? 0),
+      },
+      uptime_7d: Object.fromEntries(uptimeRows.map((r) => [r.slug, r.pct])),
     });
   });
 
