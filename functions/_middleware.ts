@@ -15,11 +15,34 @@ function esc(s: string): string {
 
 function paginaLogin(clientId: string | undefined, quiero: string): Response {
   const si = Boolean(clientId);
-  const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ingresar — CRM Flota</title><style>body{font-family:system-ui;display:grid;place-items:center;min-height:100vh;margin:0;background:#09090b;color:#fafafa}main{text-align:center;padding:2rem;max-width:420px}h1{font-size:1.4rem;margin-bottom:.3rem}p{color:#a1a1aa;font-size:.9rem;line-height:1.5}#err{color:#f87171;font-size:.85rem;min-height:1.2rem;margin-top:1rem}</style></head><body><main><h1>CRM Flota</h1><p>Panel privado. Ingresá con tu cuenta de Google.</p>${
-    si
-      ? `<div id="g_id_onload" data-client_id="${esc(clientId!)}" data-callback="listo" data-auto_prompt="false"></div><div class="g_id_signin" data-type="standard" data-size="large" data-theme="filled_black" data-text="signin_with" data-shape="pill"></div><script src="https://accounts.google.com/gsi/client" async defer></script><script>function listo(r){fetch('/api/auth/google',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({credential:r.credential,next:${esc(JSON.stringify(quiero))}})}).then(async function(x){var j=await x.json();if(j.ok){location.href=j.next||'/';}else{document.getElementById('err').textContent=j.error||'No pudiste ingresar.';}}).catch(function(){document.getElementById('err').textContent='Error de red, probá de nuevo.';});}</script>`
-      : `<p style="color:#f87171">Auth no configurado en el servidor: falta GOOGLE_CLIENT_ID / GOOGLE_WHITELIST en Pages.</p>`
-  }<div id="err"></div></main></body></html>`;
+  const script = si
+    ? `<div id="btn"></div><script src="https://accounts.google.com/gsi/client" async defer></script><script>
+var QUIERO = ${esc(JSON.stringify(quiero))};
+function listo(r){
+  var t=document.getElementById('err');
+  t.textContent='Verificando...';
+  fetch('/api/auth/google',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({credential:r.credential,next:QUIERO})})
+    .then(function(x){return x.json();})
+    .then(function(j){
+      if(j.ok){t.textContent='';location.href=j.next||'/';}
+      else{t.textContent=j.error||'No pudiste ingresar.';}
+    })
+    .catch(function(e){t.textContent='Error de red: '+e;});
+}
+window.addEventListener('load',function(){
+  var t=document.getElementById('err');
+  if(!window.google||!google.accounts||!google.accounts.id){t.textContent='No se pudo cargar el SDK de Google (bloqueador de contenido?).';return;}
+  google.accounts.id.initialize({client_id:'${esc(clientId!)}',callback:listo,auto_select:false,cancel_on_tap_outside:false});
+  google.accounts.id.renderButton(document.getElementById('btn'),{theme:'filled_black',size:'large',shape:'pill',text:'signin_with'});
+  google.accounts.id.prompt(function(n){
+    if(n.isNotDisplayed())t.textContent='Prompt bloqueado: '+n.getNotDisplayedReason();
+    else if(n.isSkippedMoment())t.textContent='Prompt salteado: '+n.getSkippedReason();
+    else if(n.isDismissedMoment()&&n.getDismissedReason()!=='user_cancel')t.textContent='Prompt descartado: '+n.getDismissedReason();
+  });
+});
+</script>`
+    : `<p style="color:#f87171">Auth no configurado en el servidor: falta GOOGLE_CLIENT_ID / GOOGLE_WHITELIST.</p>`;
+  const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ingresar — CRM Flota</title><style>body{font-family:system-ui;display:grid;place-items:center;min-height:100vh;margin:0;background:#09090b;color:#fafafa}main{text-align:center;padding:2rem;max-width:420px}h1{font-size:1.4rem;margin-bottom:.3rem}p{color:#a1a1aa;font-size:.9rem;line-height:1.5}#btn{display:grid;place-items:center;margin-top:1rem;min-height:44px}#err{color:#f87171;font-size:.85rem;min-height:1.2rem;margin-top:1rem;white-space:pre-wrap}</style></head><body><main><h1>CRM Flota</h1><p>Panel privado. Ingresá con tu cuenta de Google.</p>${script}<div id="err"></div></main></body></html>`;
   return new Response(html, {
     headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
   });
