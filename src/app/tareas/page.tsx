@@ -17,6 +17,7 @@ export default function TareasPage() {
   const [nueva, setNueva] = useState("");
   const [slugFiltro, setSlugFiltro] = useState("todas");
   const [err, setErr] = useState(false);
+  const [sesion, setSesion] = useState<{ logueado: boolean; login?: string } | null>(null);
 
   const load = useCallback(() => {
     fetch("/api/overview")
@@ -27,30 +28,31 @@ export default function TareasPage() {
 
   useEffect(() => {
     load();
+    fetch("/api/auth/status")
+      .then((r) => r.json())
+      .then(setSesion)
+      .catch(() => setSesion({ logueado: false }));
   }, [load]);
 
   async function conToken(method: string, url: string, body?: unknown) {
-    let token = localStorage.getItem("crm_token");
-    if (!token) {
-      token = prompt("Token de escritura (CRM_TOKEN):") ?? "";
-      if (!token) return;
-      localStorage.setItem("crm_token", token);
-    }
+    // La autoridad viaja en la cookie de sesión (HttpOnly, la pone /api/auth/callback).
     const res = await fetch(url, {
       method,
-      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      headers: { "content-type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
-    if (res.status === 401) {
-      localStorage.removeItem("crm_token");
-      alert("Token inválido. Se pide de nuevo en el próximo cambio.");
-    }
+    if (res.status === 401) setSesion({ logueado: false });
     return res;
+  }
+
+  async function salir() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    setSesion({ logueado: false });
   }
 
   async function crear(e: React.FormEvent) {
     e.preventDefault();
-    if (!nueva.trim()) return;
+    if (!nueva.trim() || !sesion?.logueado) return;
     const res = await conToken("POST", "/api/tareas", { titulo: nueva.trim() });
     if (res?.ok) {
       setNueva("");
@@ -71,11 +73,31 @@ export default function TareasPage() {
 
   return (
     <div className="space-y-5 max-w-3xl">
-      <div>
-        <h1 className="text-xl font-semibold tracking-tight">Tareas</h1>
-        <p className="text-sm text-muted">
-          {data.tareas.length} abiertas · {data.hechas.length} completadas (últimas 20)
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">Tareas</h1>
+          <p className="text-sm text-muted">
+            {data.tareas.length} abiertas · {data.hechas.length} completadas (últimas 20)
+          </p>
+        </div>
+        {sesion?.logueado ? (
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-xs text-muted">conectado como @{sesion.login}</span>
+            <button
+              onClick={salir}
+              className="rounded-lg border border-line px-2.5 py-1 text-xs text-muted hover:text-foreground hover:border-muted/40 transition-colors"
+            >
+              Salir
+            </button>
+          </div>
+        ) : (
+          <a
+            href="/api/auth/login?next=/tareas"
+            className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent/90 transition-colors shrink-0"
+          >
+            Iniciar sesión con GitHub
+          </a>
+        )}
       </div>
 
       {/* Nueva tarea */}
@@ -83,12 +105,14 @@ export default function TareasPage() {
         <input
           value={nueva}
           onChange={(e) => setNueva(e.target.value)}
-          placeholder="Nueva tarea…"
-          className="flex-1 rounded-lg border border-line bg-panel px-3 py-2 text-sm outline-none placeholder:text-muted/50 focus:border-accent/60 transition-colors"
+          placeholder={sesion?.logueado ? "Nueva tarea…" : "Iniciá sesión para crear tareas…"}
+          disabled={!sesion?.logueado}
+          className="flex-1 rounded-lg border border-line bg-panel px-3 py-2 text-sm outline-none placeholder:text-muted/50 focus:border-accent/60 transition-colors disabled:opacity-50"
         />
         <button
           type="submit"
-          className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent/90 transition-colors"
+          disabled={!sesion?.logueado}
+          className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Añadir
         </button>

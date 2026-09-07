@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { requireToken } from "../../src/lib/auth";
+import { requireEscritura } from "../../src/lib/auth";
 import { checkInput, seoInput } from "../../src/lib/validate";
 
 const DAY = 86400000;
@@ -109,7 +109,7 @@ export const onRequest = async (context: any): Promise<Response> => {
     });
   });
 
-  app.post("/api/checks", requireToken, async (c: any) => {
+  app.post("/api/checks", requireEscritura, async (c: any) => {
     const body = await c.req.json();
     const input = checkInput(body);
     await db
@@ -119,7 +119,7 @@ export const onRequest = async (context: any): Promise<Response> => {
     return Response.json({ ok: true }, { status: 201 });
   });
 
-  app.post("/api/deployments", requireToken, async (c: any) => {
+  app.post("/api/deployments", requireEscritura, async (c: any) => {
     const body = await c.req.json();
     if (!body?.slug) return Response.json({ error: "slug requerido" }, { status: 400 });
     await db
@@ -129,7 +129,7 @@ export const onRequest = async (context: any): Promise<Response> => {
     return Response.json({ ok: true }, { status: 201 });
   });
 
-  app.post("/api/tareas", requireToken, async (c: any) => {
+  app.post("/api/tareas", requireEscritura, async (c: any) => {
     const body = await c.req.json();
     if (!body?.titulo) return Response.json({ error: "titulo requerido" }, { status: 400 });
     await db
@@ -139,7 +139,7 @@ export const onRequest = async (context: any): Promise<Response> => {
     return Response.json({ ok: true }, { status: 201 });
   });
 
-  app.post("/api/seo", requireToken, async (c: any) => {
+  app.post("/api/seo", requireEscritura, async (c: any) => {
     const input = seoInput(await c.req.json());
     await db
       .prepare(
@@ -166,7 +166,7 @@ export const onRequest = async (context: any): Promise<Response> => {
     return Response.json({ ok: true }, { status: 201 });
   });
 
-  app.patch("/api/tareas/:id", requireToken, async (c: any) => {
+  app.patch("/api/tareas/:id", requireEscritura, async (c: any) => {
     await db
       .prepare("UPDATE tareas SET hecha = 1 WHERE id = ?")
       .bind(Number(c.req.param("id")))
