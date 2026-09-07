@@ -149,9 +149,10 @@ def main():
         st, h, body = c.get(f"{base}/api/auth/status")
         ok("status abierto = logueado:false", st == 200 and json.loads(body)["logueado"] is False, str(body[:60]))
 
-        # --- 2. canje GIS valido -> sesion + redirect
-        st, h, body = c.post(f"{base}/api/auth/google", {"credential": mocktok(EMAIL_OK), "next": "/tareas"}, redirect=False)
-        ok("canje GIS ok -> 302 a /tareas", st == 302 and h.get("Location") == "/tareas", f"{st} {h.get('Location')}")
+        # --- 2. canje GIS valido -> sesion + JSON {ok:true}
+        st, h, body = c.post(f"{base}/api/auth/google", {"credential": mocktok(EMAIL_OK), "next": "/tareas"})
+        j = json.loads(body)
+        ok("canje GIS ok -> JSON ok:true next:/tareas", st == 200 and j.get("ok") is True and j.get("next") == "/tareas", f"{st} {body[:80]}")
         ok("cookie de sesion puesta", c.sesion_cookie() is not None)
 
         # --- 3. con sesion: todo pasa
@@ -171,19 +172,20 @@ def main():
         # --- 5. whitelist deniega
         c2 = Cliente()
         st, h, body = c2.post(f"{base}/api/auth/google", {"credential": mocktok(EMAIL_MAL), "next": "/"})
-        ok("email fuera de whitelist = 403", st == 403 and b"whitelist" in body, f"{st}")
+        ok("email fuera de whitelist = 403 JSON", st == 403 and b"whitelist" in body, f"{st}")
         ok("sin sesion tras denegacion", c2.sesion_cookie() is None)
 
         # --- 6. credential invalido
         c3 = Cliente()
-        st, h, body = c3.post(f"{base}/api/auth/google", {"credential": "garbage", "next": "/"})
-        ok("credential invalido = 403", st == 403, str(st))
+        st, h, body = c3.post(f"{base}/api/auth/google", {"credential": "garbage", "next": "/", "redirect": False})
+        ok("credential invalido = 403 JSON", st == 403, str(st))
         st, h, body = c3.post(f"{base}/api/auth/google", {"next": "/"})
-        ok("sin credential = 400", st == 400, str(st))
+        ok("sin credential = 400 JSON", st == 400, str(st))
 
         # --- 7. next peligroso ignorado
-        st, h, body = c.post(f"{base}/api/auth/google", {"credential": mocktok(EMAIL_OK), "next": "https://mal.com"}, redirect=False)
-        ok("next protocol-relative ignorado", st == 302 and h.get("Location") == "/", f"{st} {h.get('Location')}")
+        st, h, body = c.post(f"{base}/api/auth/google", {"credential": mocktok(EMAIL_OK), "next": "https://mal.com"})
+        j = json.loads(body)
+        ok("next externo -> cae a /", st == 200 and j.get("ok") is True and j.get("next") == "/", f"{st} {body[:80]}")
 
         # --- 8. logout borra la sesion
         c.post(f"{base}/api/auth/logout")

@@ -12,20 +12,6 @@ import {
 import { verificarIdToken, emailAutorizado, googleConfigurado } from "../../../src/lib/goauth";
 import { nextSeguro } from "../../../src/lib/oauth-whitelist";
 
-function esc(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
-
-function DENEGADO(motivo: string): string {
-  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Acceso denegado — CRM Flota</title><style>body{font-family:system-ui;display:grid;place-items:center;min-height:100vh;margin:0;background:#09090b;color:#fafafa}main{text-align:center;max-width:440px;padding:2rem}h1{font-size:1.25rem}p{color:#a1a1aa;font-size:.9rem;line-height:1.5}</style></head><body><main><h1>Acceso denegado</h1><p>${esc(motivo)}</p><p><a href="/login" style="color:#60a5fa">Volver a intentar</a></p></main></body></html>`;
-}
-
-function pagina(html: string, cookies: string[], status = 200): Response {
-  const h = new Headers({ "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
-  for (const c of cookies) h.append("set-cookie", c);
-  return new Response(html, { status, headers: h });
-}
-
 /** SOLO E2E (binding MOCK_GOOGLE=1, inerte en prod): decodifica mocktok_<b64(email)>. */
 function perfilMock(credential: string): { sub: string; email: string } | null {
   try {
@@ -47,31 +33,36 @@ export const onRequest = async (context: any): Promise<Response> => {
     return Response.json(ses ? { logueado: true, email: ses.email } : { logueado: false });
   });
 
-  // Canje del id_token de Google Sign-In por sesión del panel
+  // Canje del id_token de Google Sign-In por sesión del panel.
+  // Responde SIEMPRE JSON: el caller es fetch() desde la página de login.
   app.post("/api/auth/google", async (c: any) => {
     const body = await c.req.json().catch(() => ({}));
     const credential = body?.credential;
+    const jsonr = (data: Record<string, unknown>, status = 200, cookies: string[] = []): Response => {
+      const h = new Headers({ "content-type": "application/json", "cache-control": "no-store" });
+      for (const ck of cookies) h.append("set-cookie", ck);
+      return new Response(JSON.stringify(data), { status, headers: h });
+    };
     if (!googleConfigurado(env)) {
-      return pagina(DENEGADO("Auth no configurado en el servidor (falta GOOGLE_CLIENT_ID / GOOGLE_WHITELIST)."), [], 503);
+      return jsonr({ ok: false, error: "Auth no configurado en el servidor (falta GOOGLE_CLIENT_ID / GOOGLE_WHITELIST)." }, 503);
     }
     if (typeof credential !== "string" || !credential) {
-      return pagina(DENEGADO("Falta el credential de Google."), [], 400);
+      return jsonr({ ok: false, error: "Falta el credential de Google." }, 400);
     }
     const user =
       env.MOCK_GOOGLE === "1" && typeof credential === "string" && credential.startsWith("mocktok_")
         ? perfilMock(credential)
         : await verificarIdToken(credential, env);
     if (!user) {
-      return pagina(DENEGADO("Google rechazó el token (puede estar vencido). Probá de nuevo."), [], 403);
+      return jsonr({ ok: false, error: "Google rechazó el token. Probá de nuevo." }, 403);
     }
     if (!emailAutorizado(user.email, env)) {
-      return pagina(DENEGADO(`La cuenta ${user.email} no está en la whitelist del panel.`), [], 403);
+      return jsonr({ ok: false, error: `La cuenta ${user.email} no está en la whitelist del panel.` }, 403);
     }
     const ses = await crearSesion(db, user.email, user.sub);
     await limpiarVencidas(db);
-    const h = new Headers({ location: nextSeguro(body?.next), "cache-control": "no-store" });
-    h.append("set-cookie", ses.cookie);
-    return new Response(null, { status: 302, headers: h });
+    const destino = nextSeguro(body?.next);
+    return jsonr({ ok: true, next: destino }, 200, [ses.cookie]);
   });
 
   // Cerrar sesión
