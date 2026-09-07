@@ -1,132 +1,77 @@
-// Rutas OAuth GitHub del panel: /api/auth/{status,login,callback,logout}
+// Rutas de auth Google: /api/auth/{status,google,logout}.
+// /api/auth/google canjea el id_token de GIS por sesión (cookie HttpOnly + D1).
 import { Hono } from "hono";
 import {
-  crearSesion,
   getCookie,
-  limpiarVencidas,
-  OAUTH_STATE_COOKIE,
-  SESSION_COOKIE,
   sesionActiva,
+  limpiarVencidas,
+  crearSesion,
+  cookieLogout,
+  SESSION_COOKIE,
 } from "../../../src/lib/session";
-import {
-  githubConfigurado,
-  intercambiarCodigo,
-  usuarioGithub,
-} from "../../../src/lib/gh-oauth";
-import {
-  autorizado,
-  leerEstado,
-  nextSeguro,
-  payloadEstado,
-  urlLogin,
-} from "../../../src/lib/oauth-whitelist";
+import { verificarIdToken, emailAutorizado, googleConfigurado } from "../../../src/lib/goauth";
+import { nextSeguro } from "../../../src/lib/oauth-whitelist";
 
 function esc(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
 function DENEGADO(motivo: string): string {
-  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Acceso denegado — CRM Flota</title><style>body{font-family:system-ui;display:grid;place-items:center;min-height:100vh;margin:0;background:#09090b;color:#fafafa}main{text-align:center;max-width:440px;padding:2rem}h1{font-size:1.25rem}p{color:#a1a1aa;font-size:.9rem;line-height:1.5}</style></head><body><main><h1>Acceso denegado</h1><p>${esc(motivo)}</p><p><a href="/" style="color:#60a5fa">Volver al panel</a></p></main></body></html>`;
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Acceso denegado — CRM Flota</title><style>body{font-family:system-ui;display:grid;place-items:center;min-height:100vh;margin:0;background:#09090b;color:#fafafa}main{text-align:center;max-width:440px;padding:2rem}h1{font-size:1.25rem}p{color:#a1a1aa;font-size:.9rem;line-height:1.5}</style></head><body><main><h1>Acceso denegado</h1><p>${esc(motivo)}</p><p><a href="/login" style="color:#60a5fa">Volver a intentar</a></p></main></body></html>`;
 }
 
 function pagina(html: string, cookies: string[], status = 200): Response {
-  const h = new Headers({
-    "content-type": "text/html; charset=utf-8",
-    "cache-control": "no-store",
-  });
+  const h = new Headers({ "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
   for (const c of cookies) h.append("set-cookie", c);
   return new Response(html, { status, headers: h });
 }
 
-const LIMPIAR_STATE = `${OAUTH_STATE_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`;
-
-function redirect302(url: string, cookies: string[]): Response {
-  const h = new Headers({ location: url, "cache-control": "no-store" });
-  for (const c of cookies) h.append("set-cookie", c);
-  return new Response(null, { status: 302, headers: h });
+/** SOLO E2E (binding MOCK_GOOGLE=1, inerte en prod): decodifica mocktok_<b64(email)>. */
+function perfilMock(credential: string): { sub: string; email: string } | null {
+  try {
+    const email = atob(credential.slice("mocktok_".length)).toLowerCase();
+    return email.includes("@") ? { sub: "1234567890", email } : null;
+  } catch {
+    return null;
+  }
 }
 
 export const onRequest = async (context: any): Promise<Response> => {
   const app = new Hono();
   const db = context.env.DB;
   const env = context.env;
-  const origin = new URL(context.request.url).origin;
 
-  // Estado de sesión para el frontend
+  // Estado de sesión para UIs
   app.get("/api/auth/status", async (c: any) => {
     const ses = await sesionActiva(db, getCookie(c.req.header("Cookie"), SESSION_COOKIE));
-    await limpiarVencidas(db);
-    return Response.json(ses ? { logueado: true, login: ses.login } : { logueado: false });
+    return Response.json(ses ? { logueado: true, email: ses.email } : { logueado: false });
   });
 
-  // Botón "Iniciar sesión con GitHub"
-  app.get("/api/auth/login", (c: any) => {
-    if (!githubConfigurado(env)) {
-      return pagina(
-        DENEGADO(
-          "OAuth no configurado en el servidor: faltan GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET."
-        ),
-        [],
-        503
-      );
+  // Canje del id_token de Google Sign-In por sesión del panel
+  app.post("/api/auth/google", async (c: any) => {
+    const body = await c.req.json().catch(() => ({}));
+    const credential = body?.credential;
+    if (!googleConfigurado(env)) {
+      return pagina(DENEGADO("Auth no configurado en el servidor (falta GOOGLE_CLIENT_ID / GOOGLE_WHITELIST)."), [], 503);
     }
-    const next = nextSeguro(new URL(c.req.url).searchParams.get("next"));
-    const state = payloadEstado(next);
-    return redirect302(urlLogin(origin, env.GITHUB_CLIENT_ID, state, env), [
-      `${OAUTH_STATE_COOKIE}=${state}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=600`,
-    ]);
-  });
-
-  // Vuelta de GitHub: code + state → sesión
-  app.get("/api/auth/callback", async (c: any) => {
-    const url = new URL(c.req.url);
-    const code = url.searchParams.get("code");
-    const state = url.searchParams.get("state");
-    const stateCookie = getCookie(c.req.header("Cookie"), OAUTH_STATE_COOKIE);
-
-    if (!code || !state || !stateCookie || state !== stateCookie) {
-      return pagina(DENEGADO("State inválido o expirado. Volvé a intentar el login."), [LIMPIAR_STATE], 403);
+    if (typeof credential !== "string" || !credential) {
+      return pagina(DENEGADO("Falta el credential de Google."), [], 400);
     }
-    const blanco = leerEstado(state);
-    if (!blanco) {
-      return pagina(DENEGADO("State corrupto. Volvé a intentar el login."), [LIMPIAR_STATE], 403);
+    const user =
+      env.MOCK_GOOGLE === "1" && typeof credential === "string" && credential.startsWith("mocktok_")
+        ? perfilMock(credential)
+        : await verificarIdToken(credential, env);
+    if (!user) {
+      return pagina(DENEGADO("Google rechazó el token (puede estar vencido). Probá de nuevo."), [], 403);
     }
-    if (!githubConfigurado(env)) {
-      return pagina(DENEGADO("OAuth no configurado en el servidor."), [LIMPIAR_STATE], 503);
+    if (!emailAutorizado(user.email, env)) {
+      return pagina(DENEGADO(`La cuenta ${user.email} no está en la whitelist del panel.`), [], 403);
     }
-
-    const token = await intercambiarCodigo(env, code, `${origin}/api/auth/callback`);
-    if (!token) {
-      return pagina(
-        DENEGADO(
-          "GitHub rechazó el intercambio del código (los code valen 10 minutos y un solo uso). Volvé a intentar."
-        ),
-        [LIMPIAR_STATE],
-        403
-      );
-    }
-    const gh = await usuarioGithub(token, env);
-    if (!gh) {
-      return pagina(DENEGADO("No pude leer tu usuario de GitHub con el token entregado."), [LIMPIAR_STATE], 403);
-    }
-    if (!autorizado(gh)) {
-      return pagina(
-        DENEGADO(`El usuario ${gh.login} no está en la whitelist del panel.`),
-        [LIMPIAR_STATE],
-        403
-      );
-    }
-
-    const ses = await crearSesion(db, gh.login, gh.id);
+    const ses = await crearSesion(db, user.email, user.sub);
     await limpiarVencidas(db);
-    return redirect302(nextSeguro(blanco.next), [
-      ses.cookie,
-      LIMPIAR_STATE,
-    ]);
+    const h = new Headers({ location: nextSeguro(body?.next), "cache-control": "no-store" });
+    h.append("set-cookie", ses.cookie);
+    return new Response(null, { status: 302, headers: h });
   });
 
   // Cerrar sesión
@@ -136,12 +81,9 @@ export const onRequest = async (context: any): Promise<Response> => {
       const { sha256hex } = await import("../../../src/lib/session");
       await db.prepare("DELETE FROM sesiones WHERE token_hash = ?").bind(await sha256hex(raw)).run();
     }
-    const h = new Headers({ "content-type": "application/json", "cache-control": "no-store" });
-    h.append(
-      "set-cookie",
-      `${SESSION_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`
-    );
-    return new Response(JSON.stringify({ ok: true }), { status: 200, headers: h });
+    return new Response(JSON.stringify({ ok: true }), {
+      headers: { "content-type": "application/json", "set-cookie": cookieLogout() },
+    });
   });
 
   return app.fetch(context.request, context.env);

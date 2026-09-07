@@ -82,7 +82,7 @@ export default function TareasPage() {
         </div>
         {sesion?.logueado ? (
           <div className="flex items-center gap-2 shrink-0">
-            <span className="text-xs text-muted">conectado como @{sesion.login}</span>
+            <span className="text-xs text-muted">conectado como {sesion.login}</span>
             <button
               onClick={salir}
               className="rounded-lg border border-line px-2.5 py-1 text-xs text-muted hover:text-foreground hover:border-muted/40 transition-colors"
@@ -92,10 +92,10 @@ export default function TareasPage() {
           </div>
         ) : (
           <a
-            href="/api/auth/login?next=/tareas"
+            href="/login"
             className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent/90 transition-colors shrink-0"
           >
-            Iniciar sesión con GitHub
+            Iniciar sesión con Google
           </a>
         )}
       </div>

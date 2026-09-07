@@ -71,7 +71,7 @@ describe("requireEscritura", () => {
 
   it("acepta sesión via cookie", async () => {
     let pasado = false;
-    const ses = { login: "tiag-ops", gh_user_id: 314013847 };
+    const ses = { email: "tiago@ejemplo.com", sub: "123" };
     const c = makeCtx({ cookie: `${SESSION_COOKIE}=abc123` }, dbFalsa([ses]));
     const res = await requireEscritura(c, async () => {
       pasado = true;
@@ -107,7 +107,7 @@ describe("helpers de cookie", () => {
         return { bind: () => ({ run: async () => ({}) }) };
       },
     };
-    const { raw, cookie } = await crearSesion(db, "tiag-ops", 1);
+    const { raw, cookie } = await crearSesion(db, "tiago@ejemplo.com", "sub-1");
     expect(cookie).toContain("HttpOnly");
     expect(cookie).toContain("Secure");
     expect(cookie).toContain("SameSite=Lax");
