@@ -2,6 +2,13 @@ name = "crm"
 compatibility_date = "2026-08-01"
 pages_build_output_dir = "out"
 
+# Vars no-secretas (el client id es público por diseño; el email no es secreto).
+# CRM_TOKEN sigue como secret en el dashboard (nunca en este archivo).
+# GOOGLE_WHITELIST admite varios: "a@x.com, b@y.com".
+[vars]
+GOOGLE_CLIENT_ID = "762489741608-464bb6ha2cut1963abssjjdfge8972v6.apps.googleusercontent.com"
+GOOGLE_WHITELIST = "tiagomusu@gmail.com"
+
 [[d1_databases]]
 binding = "DB"
 database_name = "crm-db"
