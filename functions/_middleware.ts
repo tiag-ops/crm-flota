@@ -1,8 +1,9 @@
 // Candado global del CRM: TODO (páginas, assets, APIs) exige sesión de browser
-// excepto: /login, /api/auth/*, Bearer de máquina (pulse/deploys) y el mock E2E.
+// excepto: /api/auth/*, Bearer de máquina (pulse/deploys) y favicon.
+// /login no existe como asset: la dibuja este middleware en el fallback.
 import { getCookie, sesionActiva, SESSION_COOKIE } from "../src/lib/session";
 
-const PUBLICOS = new Set(["/login", "/favicon.ico"]);
+const PUBLICOS = new Set(["/favicon.ico"]);
 
 function esc(s: string): string {
   return s
@@ -29,9 +30,16 @@ export const onRequest = async (context: any): Promise<Response> => {
   const url = new URL(request.url);
   const ruta = url.pathname;
 
-  // Camino de auth siempre abierto (login HTML, estado, canje GIS, logout).
+  // Camino de auth siempre abierto (estado, canje GIS, logout).
   if (PUBLICOS.has(ruta)) return next();
   if (ruta.startsWith("/api/auth/")) return next();
+
+  // /login: si ya hay sesión, adentro; si no, el propio HTML de login.
+  if (ruta === "/login") {
+    const ses = await sesionActiva(env.DB, getCookie(request.headers.get("cookie"), SESSION_COOKIE));
+    if (ses) return Response.redirect(new URL("/", request.url).toString(), 302);
+    return paginaLogin(env.GOOGLE_CLIENT_ID, "/");
+  }
 
   // Máquinas: Bearer de management sigue operativo (pulse, deploys por curl).
   const auth = request.headers.get("authorization") ?? "";
