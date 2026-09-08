@@ -13,11 +13,16 @@ function esc(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
+/** JSON Stringify para incrustar dentro de <script>: solo seguro-JS, sin entidades HTML. */
+function js(s: string): string {
+  return JSON.stringify(s).replace(/</g, "\\u003c");
+}
+
 function paginaLogin(clientId: string | undefined, quiero: string): Response {
   const si = Boolean(clientId);
   const script = si
     ? `<div id="btn"></div><script src="https://accounts.google.com/gsi/client" async defer></script><script>
-var QUIERO = ${esc(JSON.stringify(quiero))};
+var QUIERO = ${js(quiero)};
 function listo(r){
   var t=document.getElementById('err');
   t.textContent='Verificando...';
