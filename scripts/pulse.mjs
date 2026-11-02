@@ -7,7 +7,18 @@ if (!API || !TOKEN) {
   process.exit(1);
 }
 
-const sites = await (await fetch(`${API}/api/sites`)).json();
+// El panel tiene candado global: hasta /api/sites pide el Bearer de máquina.
+const auth = { authorization: `Bearer ${TOKEN}` };
+const resSites = await fetch(`${API}/api/sites`, { headers: auth });
+if (!resSites.ok) {
+  console.error(`GET /api/sites falló con ${resSites.status}`);
+  process.exit(1);
+}
+const sites = await resSites.json();
+if (!Array.isArray(sites)) {
+  console.error("GET /api/sites no devolvió una lista:", JSON.stringify(sites));
+  process.exit(1);
+}
 const resultados = [];
 
 for (const site of sites) {
